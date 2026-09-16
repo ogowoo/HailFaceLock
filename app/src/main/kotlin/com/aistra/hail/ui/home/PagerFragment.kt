@@ -48,6 +48,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -445,10 +446,17 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {
             HIsland.ensureLaunchIntentExists(packageName)
         }
-        app.packageManager.getLaunchIntentForPackage(packageName)?.let {
-            HShortcuts.addDynamicShortcut(packageName)
-            startActivity(it)
-        } ?: HUI.showToast(R.string.activity_not_found)
+        // The frozen state (especially suspend) may take a moment to actually lift.
+        // Launching too early makes the system show its suspended-app dialog, whose
+        // manual unsuspend would be intercepted and re-frozen by UnsuspendedReceiver.
+        lifecycleScope.launch {
+            var retries = 20
+            while (AppManager.isAppFrozen(packageName) && retries-- > 0) delay(100)
+            app.packageManager.getLaunchIntentForPackage(packageName)?.let {
+                HShortcuts.addDynamicShortcut(packageName)
+                startActivity(it)
+            } ?: HUI.showToast(R.string.activity_not_found)
+        }
     }
 
     private fun setListFrozen(

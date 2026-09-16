@@ -2,12 +2,15 @@ package com.aistra.hail.ui.api
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.R
 import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailData
 import com.aistra.hail.utils.HBiometric
 import com.aistra.hail.utils.HUI
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Shown after the user unsuspends an app from the system dialog.
@@ -34,15 +37,20 @@ class UnfreezeAuthActivity : AppCompatActivity() {
         HBiometric.authenticate(
             this,
             onSuccess = {
-                runCatching {
-                    if (AppManager.setAppFrozen(pkg, false)) {
-                        app.setAutoFreezeService()
-                        if (intent.getBooleanExtra(EXTRA_LAUNCH, false)) {
-                            packageManager.getLaunchIntentForPackage(pkg)?.let(::startActivity)
-                        }
-                    } else HUI.showToast(R.string.permission_denied)
+                lifecycleScope.launch {
+                    runCatching {
+                        if (AppManager.setAppFrozen(pkg, false)) {
+                            app.setAutoFreezeService()
+                            if (intent.getBooleanExtra(EXTRA_LAUNCH, false)) {
+                                // Wait until the frozen state has actually lifted before launching.
+                                var retries = 20
+                                while (AppManager.isAppFrozen(pkg) && retries-- > 0) delay(100)
+                                packageManager.getLaunchIntentForPackage(pkg)?.let(::startActivity)
+                            }
+                        } else HUI.showToast(R.string.permission_denied)
+                    }
+                    finish()
                 }
-                finish()
             },
             onDismiss = ::finish
         )

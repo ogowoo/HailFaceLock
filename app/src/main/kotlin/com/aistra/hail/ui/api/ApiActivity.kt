@@ -8,6 +8,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,8 @@ import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.theme.AppTheme
 import com.aistra.hail.utils.*
 import com.aistra.hail.work.HWork.setAutoFreeze
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class ApiActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -242,10 +245,16 @@ class ApiActivity : AppCompatActivity() {
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {
             HIsland.ensureLaunchIntentExists(packageName)
         }
-        packageManager.getLaunchIntentForPackage(pkg)?.let {
-            HShortcuts.addDynamicShortcut(pkg)
-            startActivity(it)
-        } ?: throw ActivityNotFoundException(getString(R.string.activity_not_found))
+        // Wait until the frozen state has actually lifted before launching, otherwise the
+        // system shows its suspended-app dialog (whose manual unsuspend gets re-frozen).
+        lifecycleScope.launch {
+            var retries = 20
+            while (AppManager.isAppFrozen(pkg) && retries-- > 0) delay(100)
+            packageManager.getLaunchIntentForPackage(pkg)?.let {
+                HShortcuts.addDynamicShortcut(pkg)
+                startActivity(it)
+            } ?: HUI.showToast(R.string.activity_not_found)
+        }
     }
 
     private fun setAppFrozen(pkg: String, frozen: Boolean) = when {
