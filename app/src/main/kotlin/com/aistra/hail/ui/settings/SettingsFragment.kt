@@ -114,6 +114,12 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 titleId = R.string.action_biometric_unfreeze,
                 icon = Icons.Outlined.Face
             )
+            preference(
+                key = "unfreeze_guard_debug",
+                title = { Text(text = stringResource(R.string.unfreeze_debug)) },
+                icon = { Icon(imageVector = Icons.Outlined.BugReport, contentDescription = null) },
+                onClick = ::showUnfreezeDebug
+            )
             horizontalDivider()
             preferenceCategory(key = "customize", title = { Text(text = stringResource(R.string.title_customize)) })
             listPreference(
@@ -359,6 +365,14 @@ class SettingsFragment : MainFragment(), MenuProvider {
 
     private fun String.toEntry(values: List<String>, @ArrayRes entriesId: Int): String =
         resources.getStringArray(entriesId)[values.indexOf(this)]
+
+    private fun showUnfreezeDebug() {
+        val log = HLogFile.read().ifBlank { getString(R.string.unfreeze_debug_empty) }
+        MaterialAlertDialogBuilder(requireActivity()).setTitle(R.string.unfreeze_debug).setMessage(log)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNeutralButton(android.R.string.copy) { _, _ -> HUI.copyText(log) }
+            .show().findViewById<MaterialTextView>(android.R.id.message)?.setTextIsSelectable(true)
+    }
 
     private fun resetDynamicShortcuts() {
         HShortcuts.removeAllDynamicShortcuts()

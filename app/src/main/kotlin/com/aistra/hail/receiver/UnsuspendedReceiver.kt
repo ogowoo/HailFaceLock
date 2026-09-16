@@ -12,6 +12,7 @@ import com.aistra.hail.R
 import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.api.UnfreezeAuthActivity
+import com.aistra.hail.utils.HLogFile
 import com.aistra.hail.utils.HPackages
 import com.aistra.hail.utils.HShizuku.setAppRestricted
 import com.aistra.hail.utils.HTarget
@@ -21,25 +22,28 @@ import com.aistra.hail.utils.UnfreezeGate
 /**
  * Observes unsuspends that Hail did not perform.
  *
- * - [ACTION_PACKAGE_UNSUSPENDED_MANUALLY] is sent by the system dialog but only to the
- *   package that performed the suspension. That works when Hail is the suspender
- *   (device owner, Dhizuku or root mode); in Shizuku mode the suspender is
- *   `com.android.shell`, so Hail never sees it.
- * - [ACTION_PACKAGES_UNSUSPENDED] is a global broadcast carrying the changed package list.
- *   It is sent with FLAG_RECEIVER_REGISTERED_ONLY, so it can only be received by a
- *   runtime-registered receiver inside a live process -- see UnfreezeGuardService.
- *
- * When the biometric gate is enabled and the user manually unsuspends an app, it is
- * re-frozen immediately and a notification asks for authentication.
+ * - [ACTION_PACKAGE_UNSUSPENDED_MANUALLY] is sent by the system dialog but only to the package
+ *   that performed the suspension. That works when Hail is the suspender (device owner, Dhizuku
+ *   or root mode); in Shizuku mode the suspender is `com.android.shell`, so Hail never sees it.
+ * - [ACTION_PACKAGES_UNSUSPENDED] is the global broadcast carrying the changed package list. It
+ *   is sent with FLAG_RECEIVER_REGISTERED_ONLY, so a live process with a runtime-registered
+ *   receiver is required -- see UnfreezeGuardService. Not every ROM delivers it, which is why
+ *   the guard service also polls the suspension state.
  */
 class UnsuspendedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_PACKAGE_UNSUSPENDED_MANUALLY ->
-                intent.getStringExtra(Intent.EXTRA_PACKAGE_NAME)?.let { handle(listOf(it)) }
+            ACTION_PACKAGE_UNSUSPENDED_MANUALLY -> intent.getStringExtra(Intent.EXTRA_PACKAGE_NAME)
+                ?.let { packages ->
+                    HLogFile.append("broadcast MANUAL: $packages")
+                    handle(listOf(packages))
+                }
 
-            ACTION_PACKAGES_UNSUSPENDED ->
-                intent.getStringArrayExtra(EXTRA_CHANGED_PACKAGE_LIST)?.let { handle(it.toList()) }
+            ACTION_PACKAGES_UNSUSPENDED -> {
+                val list = intent.getStringArrayExtra(EXTRA_CHANGED_PACKAGE_LIST)?.toList().orEmpty()
+                HLogFile.append("broadcast PACKAGES_UNSUSPENDED: $list")
+                handle(list)
+            }
         }
     }
 
@@ -47,46 +51,22 @@ class UnsuspendedReceiver : BroadcastReceiver() {
         var changed = false
         packages.forEach { pkg ->
             // Unfreezes initiated by Hail itself also fire these broadcasts on some ROMs.
-            if (UnfreezeGate.consume(pkg)) return@forEach
-            // Only apps managed by Hail, and only when they are actually frozen again by the user.
-            if (!HailData.isChecked(pkg) || !AppManager.isAppFrozen(pkg)) return@forEach
-            if (HailData.biometricUnfreeze && AppManager.setAppFrozen(pkg, true)) {
-                // Re-freeze and require biometric authentication to truly unfreeze.
-                // Note: freezing again also restores the restricted standby bucket (API 31+).
-                notifyAuthRequired(pkg)
-            } else if (HTarget.P) {
-                setAppRestricted(pkg, false)
+            if (UnfreezeGate.isExpected(pkg)) {
+                HLogFile.append("skip $pkg (unfreezed by Hail)")
+                return@forEach
             }
-            changed = true
+            if (!HailData.isChecked(pkg)) {
+                HLogFile.append("skip $pkg (not managed by Hail)")
+                return@forEach
+            }
+            if (!AppManager.isAppFrozen(pkg)) {
+                HLogFile.append("skip $pkg (already unfrozen)")
+                return@forEach
+            }
+            if (HailData.biometricUnfreeze && blockManualUnsuspend(pkg)) changed = true
+            else if (HTarget.P) setAppRestricted(pkg, false)
         }
         if (changed) app.setAutoFreezeService()
-    }
-
-    private fun notifyAuthRequired(pkg: String) {
-        val name = HPackages.getApplicationInfoOrNull(pkg)?.loadLabel(app.packageManager)?.toString() ?: pkg
-        val text = app.getString(R.string.unfreeze_auth_text, name)
-        HUI.showToast(text)
-        runCatching {
-            NotificationManagerCompat.from(app).createNotificationChannel(
-                NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
-                    .setName(app.getString(R.string.unfreeze_auth_channel)).build()
-            )
-            val contentIntent = PendingIntent.getActivity(
-                app, pkg.hashCode(),
-                Intent(app, UnfreezeAuthActivity::class.java)
-                    .putExtra(HailData.KEY_PACKAGE, pkg)
-                    .putExtra(UnfreezeAuthActivity.EXTRA_LAUNCH, true),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-            val notification = NotificationCompat.Builder(app, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_outline_lock)
-                .setContentTitle(app.getString(R.string.unfreeze_auth_title))
-                .setContentText(text)
-                .setContentIntent(contentIntent)
-                .setAutoCancel(true)
-                .build()
-            NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
-        }
     }
 
     companion object {
@@ -96,5 +76,55 @@ class UnsuspendedReceiver : BroadcastReceiver() {
         private const val EXTRA_CHANGED_PACKAGE_LIST = "android.intent.extra.changed_package_list"
         private const val CHANNEL_ID = "unfreeze_auth"
         private const val NOTIFICATION_ID = 200
+        private const val DEDUPE_MS = 10_000L
+
+        private val handledAt = HashMap<String, Long>()
+
+        /**
+         * Re-freezes [packageName] after an unsuspend that Hail did not authorize and posts a
+         * notification asking for biometric verification. Returns true when it was handled.
+         */
+        @Synchronized
+        fun blockManualUnsuspend(packageName: String): Boolean {
+            val now = System.currentTimeMillis()
+            handledAt.entries.removeAll { now - it.value > DEDUPE_MS }
+            if (handledAt.containsKey(packageName)) return false
+            if (!AppManager.setAppFrozen(packageName, true)) {
+                HLogFile.append("re-freeze FAILED: $packageName")
+                return false
+            }
+            handledAt[packageName] = now
+            HLogFile.append("re-froze $packageName, asking for verification")
+            notifyAuthRequired(packageName)
+            return true
+        }
+
+        private fun notifyAuthRequired(packageName: String) {
+            val name = HPackages.getApplicationInfoOrNull(packageName)
+                ?.loadLabel(app.packageManager)?.toString() ?: packageName
+            val text = app.getString(R.string.unfreeze_auth_text, name)
+            HUI.showToast(text)
+            runCatching {
+                NotificationManagerCompat.from(app).createNotificationChannel(
+                    NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
+                        .setName(app.getString(R.string.unfreeze_auth_channel)).build()
+                )
+                val contentIntent = PendingIntent.getActivity(
+                    app, packageName.hashCode(),
+                    Intent(app, UnfreezeAuthActivity::class.java)
+                        .putExtra(HailData.KEY_PACKAGE, packageName)
+                        .putExtra(UnfreezeAuthActivity.EXTRA_LAUNCH, true),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                val notification = NotificationCompat.Builder(app, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_outline_lock)
+                    .setContentTitle(app.getString(R.string.unfreeze_auth_title))
+                    .setContentText(text)
+                    .setContentIntent(contentIntent)
+                    .setAutoCancel(true)
+                    .build()
+                NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
+            }
+        }
     }
 }

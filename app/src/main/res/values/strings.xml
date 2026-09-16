@@ -119,6 +119,8 @@
     <string name="unfreeze_guard_channel">Unfreeze guard</string>
     <string name="unfreeze_guard_title">Unfreeze verification is on</string>
     <string name="unfreeze_guard_text">Unsuspending an app needs face or fingerprint verification</string>
+    <string name="unfreeze_debug">Unfreeze gate diagnostics</string>
+    <string name="unfreeze_debug_empty">No events recorded yet.</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>
     <string name="action_whitelist">Add to Whitelist</string>

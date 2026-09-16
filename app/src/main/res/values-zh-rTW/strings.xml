@@ -105,6 +105,8 @@
     <string name="unfreeze_guard_channel">解凍守護</string>
     <string name="unfreeze_guard_title">解凍驗證已開啟</string>
     <string name="unfreeze_guard_text">解除凍結應用需要人臉或指紋驗證</string>
+    <string name="unfreeze_debug">解凍驗證診斷</string>
+    <string name="unfreeze_debug_empty">尚無記錄。</string>
     <string name="action_pin">釘選</string>
     <string name="action_unpin">取消釘選</string>
     <string name="action_whitelist">新增至白名單</string>

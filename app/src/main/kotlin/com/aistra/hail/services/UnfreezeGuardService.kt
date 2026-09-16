@@ -4,47 +4,125 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import com.aistra.hail.R
+import com.aistra.hail.app.AppManager
+import com.aistra.hail.app.HailData
 import com.aistra.hail.receiver.UnsuspendedReceiver
+import com.aistra.hail.receiver.UnsuspendedReceiver.Companion.blockManualUnsuspend
 import com.aistra.hail.ui.main.MainActivity
+import com.aistra.hail.utils.HLogFile
+import com.aistra.hail.utils.UnfreezeGate
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Keeps a process alive so [UnsuspendedReceiver] can be registered at runtime.
+ * Watches for unsuspends that Hail did not authorize, so a manual unsuspend from the system
+ * dialog cannot bypass the biometric gate.
  *
- * Android sends ACTION_PACKAGES_UNSUSPENDED with FLAG_RECEIVER_REGISTERED_ONLY, so a
- * manifest-declared receiver never sees it. Without this service, an app unsuspended
- * from the system dialog while Hail is not running would slip through the biometric gate.
+ * Two detectors run while this service lives:
+ *  - a runtime-registered receiver for ACTION_PACKAGES_UNSUSPENDED (instant, but not every ROM
+ *    delivers it -- it is sent with FLAG_RECEIVER_REGISTERED_ONLY), and
+ *  - a poller over the apps Hail currently considers frozen (works everywhere, at most one
+ *    poll interval of latency).
  *
- * Only needed while the "biometric verification to unfreeze" setting is enabled.
+ * The service only runs while the "biometric verification to unfreeze" setting is on.
  */
 class UnfreezeGuardService : Service() {
     private val receiver by lazy { UnsuspendedReceiver() }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val powerManager by lazy { getSystemService<PowerManager>() }
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        ContextCompat.registerReceiver(
-            this,
-            receiver,
-            IntentFilter(UnsuspendedReceiver.ACTION_PACKAGES_UNSUSPENDED),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                receiver,
+                IntentFilter(UnsuspendedReceiver.ACTION_PACKAGES_UNSUSPENDED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }.onFailure { HLogFile.append("registerReceiver failed: $it") }
+        HLogFile.append("guard service started")
+        HLogFile.append("android ${Build.VERSION.SDK_INT}, mode=${HailData.workingMode}, gate=${HailData.biometricUnfreeze}")
+        scope.launch { watch() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
+        HLogFile.append("guard service stopped")
+        scope.cancel()
         runCatching { unregisterReceiver(receiver) }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Polls the apps Hail currently considers frozen. Any of them that becomes unfrozen without
+     * Hail doing it is a manual unsuspend: re-freeze it and ask for biometric verification.
+     */
+    private suspend fun watch() {
+        var baseline = frozenSet()
+        var ticks = 0
+        var screenWasOff = false
+        HLogFile.append("watching ${baseline.size} frozen app(s)")
+        while (currentCoroutineContext().isActive) {
+            delay(POLL_INTERVAL_MS)
+            if (!HailData.biometricUnfreeze) {
+                baseline = frozenSet()
+                continue
+            }
+            if (powerManager?.isInteractive == false) {
+                screenWasOff = true
+                continue
+            }
+            if (screenWasOff) {
+                // Nothing can be unsuspended while locked, so a fresh baseline is safe here and
+                // avoids re-freezing apps Hail unfreezed during a long screen-off period.
+                screenWasOff = false
+                baseline = frozenSet()
+                continue
+            }
+            if (++ticks % BASELINE_REFRESH_TICKS == 0) baseline.addAll(frozenSet())
+            if (ticks % HEARTBEAT_TICKS == 0) HLogFile.append("heartbeat, watching ${baseline.size} app(s)")
+            val stillFrozen = baseline.filterTo(mutableSetOf()) { AppManager.isAppFrozen(it) }
+            val escaped = baseline - stillFrozen
+            baseline = stillFrozen
+            escaped.forEach { pkg ->
+                if (UnfreezeGate.isExpected(pkg)) {
+                    HLogFile.append("poller: $pkg unfreezed by Hail, ok")
+                    return@forEach
+                }
+                if (!HailData.isChecked(pkg)) return@forEach
+                HLogFile.append("poller: $pkg was unfreezed outside Hail")
+                if (blockManualUnsuspend(pkg)) baseline.add(pkg)
+            }
+        }
+    }
+
+    private suspend fun frozenSet(): MutableSet<String> = withContext(Dispatchers.IO) {
+        HailData.checkedList
+            .filter { it.applicationInfo != null && AppManager.isAppFrozen(it.packageName) }
+            .mapTo(mutableSetOf()) { it.packageName }
+    }
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_outline_lock)
@@ -69,5 +147,8 @@ class UnfreezeGuardService : Service() {
     companion object {
         private const val CHANNEL_ID = "unfreeze_guard"
         private const val NOTIFICATION_ID = 201
+        private const val POLL_INTERVAL_MS = 1_000L
+        private const val BASELINE_REFRESH_TICKS = 30
+        private const val HEARTBEAT_TICKS = 300
     }
 }
