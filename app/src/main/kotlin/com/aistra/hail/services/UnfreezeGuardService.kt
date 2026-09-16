@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -19,7 +20,9 @@ import com.aistra.hail.receiver.UnsuspendedReceiver
 import com.aistra.hail.receiver.UnsuspendedReceiver.Companion.blockManualUnsuspend
 import com.aistra.hail.ui.main.MainActivity
 import com.aistra.hail.utils.HLogFile
+import com.aistra.hail.utils.HPackages
 import com.aistra.hail.utils.UnfreezeGate
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,8 +47,15 @@ import kotlinx.coroutines.withContext
  */
 class UnfreezeGuardService : Service() {
     private val receiver by lazy { UnsuspendedReceiver() }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            HLogFile.append("guard error: $e")
+        }
+    )
     private val powerManager by lazy { getSystemService<PowerManager>() }
+
+    /** True when ApplicationInfo.FLAG_SUSPENDED can be used to query all apps in one call. */
+    private var bulkSuspendFlag = false
 
     override fun onCreate() {
         super.onCreate()
@@ -60,8 +70,15 @@ class UnfreezeGuardService : Service() {
             )
         }.onFailure { HLogFile.append("registerReceiver failed: $it") }
         HLogFile.append("guard service started")
-        HLogFile.append("android ${Build.VERSION.SDK_INT}, mode=${HailData.workingMode}, gate=${HailData.biometricUnfreeze}")
-        scope.launch { watch() }
+        HLogFile.append(
+            "android ${Build.VERSION.SDK_INT}, mode=${HailData.workingMode}, " +
+                    "gate=${HailData.biometricUnfreeze}, checked=${HailData.checkedList.size}"
+        )
+        scope.launch {
+            bulkSuspendFlag = HailData.workingMode.endsWith(HailData.SUSPEND) && detectBulkSuspendFlag()
+            HLogFile.append("bulk suspend query: $bulkSuspendFlag")
+            watch()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -86,42 +103,65 @@ class UnfreezeGuardService : Service() {
         HLogFile.append("watching ${baseline.size} frozen app(s)")
         while (currentCoroutineContext().isActive) {
             delay(POLL_INTERVAL_MS)
-            if (!HailData.biometricUnfreeze) {
-                baseline = frozenSet()
-                continue
-            }
-            if (powerManager?.isInteractive == false) {
-                screenWasOff = true
-                continue
-            }
-            if (screenWasOff) {
-                // Nothing can be unsuspended while locked, so a fresh baseline is safe here and
-                // avoids re-freezing apps Hail unfreezed during a long screen-off period.
-                screenWasOff = false
-                baseline = frozenSet()
-                continue
-            }
-            if (++ticks % BASELINE_REFRESH_TICKS == 0) baseline.addAll(frozenSet())
-            if (ticks % HEARTBEAT_TICKS == 0) HLogFile.append("heartbeat, watching ${baseline.size} app(s)")
-            val stillFrozen = baseline.filterTo(mutableSetOf()) { AppManager.isAppFrozen(it) }
-            val escaped = baseline - stillFrozen
-            baseline = stillFrozen
-            escaped.forEach { pkg ->
-                if (UnfreezeGate.isExpected(pkg)) {
-                    HLogFile.append("poller: $pkg unfreezed by Hail, ok")
-                    return@forEach
+            runCatching {
+                if (!HailData.biometricUnfreeze) {
+                    baseline = frozenSet()
+                    return@runCatching
                 }
-                if (!HailData.isChecked(pkg)) return@forEach
-                HLogFile.append("poller: $pkg was unfreezed outside Hail")
-                if (blockManualUnsuspend(pkg)) baseline.add(pkg)
-            }
+                if (powerManager?.isInteractive == false) {
+                    screenWasOff = true
+                    return@runCatching
+                }
+                if (screenWasOff) {
+                    // Nothing can be unsuspended while locked, so a fresh baseline is safe here
+                    // and avoids re-freezing apps Hail unfreezed during a long screen-off period.
+                    screenWasOff = false
+                    baseline = frozenSet()
+                    return@runCatching
+                }
+                if (++ticks % HEARTBEAT_TICKS == 0) HLogFile.append("heartbeat, watching ${baseline.size} app(s)")
+                val now = frozenSet()
+                val escaped = baseline - now
+                baseline = now
+                escaped.forEach { pkg ->
+                    runCatching {
+                        if (UnfreezeGate.isExpected(pkg)) {
+                            HLogFile.append("poller: $pkg unfreezed by Hail, ok")
+                            return@forEach
+                        }
+                        if (!HailData.isChecked(pkg)) return@forEach
+                        HLogFile.append("poller: $pkg was unfreezed outside Hail")
+                        if (blockManualUnsuspend(pkg)) baseline.add(pkg)
+                    }.onFailure { HLogFile.append("handle $pkg failed: $it") }
+                }
+            }.onFailure { HLogFile.append("poll failed: $it") }
         }
     }
 
     private suspend fun frozenSet(): MutableSet<String> = withContext(Dispatchers.IO) {
-        HailData.checkedList
-            .filter { it.applicationInfo != null && AppManager.isAppFrozen(it.packageName) }
-            .mapTo(mutableSetOf()) { it.packageName }
+        val managed = HailData.checkedList.filter { it.applicationInfo != null }.map { it.packageName }
+        if (managed.isEmpty()) return@withContext mutableSetOf()
+        if (bulkSuspendFlag) {
+            // One IPC for all installed apps instead of one per managed app.
+            val managedSet = managed.toHashSet()
+            return@withContext HPackages.getInstalledApplications()
+                .asSequence()
+                .filter { it.packageName in managedSet && it.flags and ApplicationInfo.FLAG_SUSPENDED != 0 }
+                .mapTo(mutableSetOf()) { it.packageName }
+        }
+        managed.filterTo(mutableSetOf()) { AppManager.isAppFrozen(it) }
+    }
+
+    /** Checks whether ApplicationInfo.FLAG_SUSPENDED is usable, using a known frozen app. */
+    private suspend fun detectBulkSuspendFlag(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val sample = HailData.checkedList.firstOrNull {
+                it.applicationInfo != null && AppManager.isAppFrozen(it.packageName)
+            } ?: return@withContext false
+            HPackages.getInstalledApplications()
+                .firstOrNull { it.packageName == sample.packageName }
+                ?.let { it.flags and ApplicationInfo.FLAG_SUSPENDED != 0 } == true
+        }.getOrDefault(false)
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -148,7 +188,6 @@ class UnfreezeGuardService : Service() {
         private const val CHANNEL_ID = "unfreeze_guard"
         private const val NOTIFICATION_ID = 201
         private const val POLL_INTERVAL_MS = 1_000L
-        private const val BASELINE_REFRESH_TICKS = 30
         private const val HEARTBEAT_TICKS = 300
     }
 }

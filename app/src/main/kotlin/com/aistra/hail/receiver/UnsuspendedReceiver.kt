@@ -4,6 +4,8 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -79,6 +81,7 @@ class UnsuspendedReceiver : BroadcastReceiver() {
         private const val DEDUPE_MS = 10_000L
 
         private val handledAt = HashMap<String, Long>()
+        private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
         /**
          * Re-freezes [packageName] after an unsuspend that Hail did not authorize and posts a
@@ -99,31 +102,38 @@ class UnsuspendedReceiver : BroadcastReceiver() {
             return true
         }
 
+        /**
+         * Must run on the main thread: Toast and notification builders require a Looper, and
+         * the guard service calls this from a coroutine on a background dispatcher.
+         */
         private fun notifyAuthRequired(packageName: String) {
             val name = HPackages.getApplicationInfoOrNull(packageName)
                 ?.loadLabel(app.packageManager)?.toString() ?: packageName
             val text = app.getString(R.string.unfreeze_auth_text, name)
-            HUI.showToast(text)
-            runCatching {
-                NotificationManagerCompat.from(app).createNotificationChannel(
-                    NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
-                        .setName(app.getString(R.string.unfreeze_auth_channel)).build()
-                )
-                val contentIntent = PendingIntent.getActivity(
-                    app, packageName.hashCode(),
-                    Intent(app, UnfreezeAuthActivity::class.java)
-                        .putExtra(HailData.KEY_PACKAGE, packageName)
-                        .putExtra(UnfreezeAuthActivity.EXTRA_LAUNCH, true),
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-                val notification = NotificationCompat.Builder(app, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_outline_lock)
-                    .setContentTitle(app.getString(R.string.unfreeze_auth_title))
-                    .setContentText(text)
-                    .setContentIntent(contentIntent)
-                    .setAutoCancel(true)
-                    .build()
-                NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
+            mainHandler.post {
+                runCatching {
+                    HUI.showToast(text)
+                    NotificationManagerCompat.from(app).createNotificationChannel(
+                        NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
+                            .setName(app.getString(R.string.unfreeze_auth_channel)).build()
+                    )
+                    val contentIntent = PendingIntent.getActivity(
+                        app, packageName.hashCode(),
+                        Intent(app, UnfreezeAuthActivity::class.java)
+                            .putExtra(HailData.KEY_PACKAGE, packageName)
+                            .putExtra(UnfreezeAuthActivity.EXTRA_LAUNCH, true),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    val notification = NotificationCompat.Builder(app, CHANNEL_ID)
+                        .setSmallIcon(R.drawable.ic_outline_lock)
+                        .setContentTitle(app.getString(R.string.unfreeze_auth_title))
+                        .setContentText(text)
+                        .setContentIntent(contentIntent)
+                        .setAutoCancel(true)
+                        .build()
+                    NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
+                    HLogFile.append("verification notification posted for $packageName")
+                }.onFailure { HLogFile.append("notification FAILED for $packageName: $it") }
             }
         }
     }

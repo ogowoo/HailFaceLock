@@ -1,5 +1,6 @@
 package com.aistra.hail.ui.settings
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -28,6 +29,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
 import androidx.lifecycle.Lifecycle
@@ -106,6 +108,11 @@ class SettingsFragment : MainFragment(), MenuProvider {
                         HUI.showToast(R.string.biometric_unavailable)
                         false
                     } else {
+                        // The verification notification needs the permission to be visible.
+                        if (value && HTarget.T && ContextCompat.checkSelfPermission(
+                                requireContext(), Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         // The guard service observes manual unsuspends from the system dialog.
                         app.setUnfreezeGuardService(value)
                         true
