@@ -122,6 +122,7 @@
     <string name="unfreeze_debug">Unfreeze gate diagnostics</string>
     <string name="unfreeze_debug_empty">No events recorded yet.</string>
     <string name="action_verify_unfreeze">Verify to unfreeze</string>
+    <string name="unfreeze_dialog_note">The system dialog can no longer unsuspend apps. Unfreeze them from Hail after verification.</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>
     <string name="action_whitelist">Add to Whitelist</string>

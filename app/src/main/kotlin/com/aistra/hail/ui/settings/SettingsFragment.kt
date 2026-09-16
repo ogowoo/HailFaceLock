@@ -116,6 +116,9 @@ class SettingsFragment : MainFragment(), MenuProvider {
                         // The guard service observes manual unsuspends from the system dialog.
                         app.setUnfreezeGuardService(value)
                         refreshSuspendDialogs()
+                        if (value && HailData.workingMode.endsWith(HailData.SUSPEND)) {
+                            HUI.showToast(R.string.unfreeze_dialog_note, isLengthLong = true)
+                        }
                         true
                     }
                 },
@@ -379,12 +382,14 @@ class SettingsFragment : MainFragment(), MenuProvider {
      * suspended before the setting changed have to be suspended again to pick it up.
      */
     private fun refreshSuspendDialogs() {
-        if (!HPolicy.isDeviceOwnerActive) return
+        if (!HailData.workingMode.endsWith(HailData.SUSPEND)) return
         val frozen = HailData.checkedList
             .filter { it.applicationInfo != null && AppManager.isAppFrozen(it.packageName) }
             .map { it.packageName }
         if (frozen.isEmpty()) return
-        lifecycleScope.launch { HPolicy.refreshSuspendDialogs(frozen) }
+        lifecycleScope.launch(Dispatchers.IO) {
+            frozen.forEach { runCatching { AppManager.refreshSuspendInfo(it) } }
+        }
     }
 
     private fun showUnfreezeDebug() {

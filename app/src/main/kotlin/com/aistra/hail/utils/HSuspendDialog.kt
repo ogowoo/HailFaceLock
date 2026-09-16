@@ -21,10 +21,23 @@ object HSuspendDialog {
     private const val BUTTON_ACTION_MORE_DETAILS = 2
 
     val unsuspend: Any? by lazy { build(BUTTON_ACTION_UNSUSPEND, withText = false) }
-    val moreDetails: Any? by lazy { build(BUTTON_ACTION_MORE_DETAILS, withText = true) }
 
-    /** Dialog info matching the current setting; null when the platform rejects it. */
-    val current: Any? get() = if (HailData.biometricUnfreeze) moreDetails else unsuspend
+    /** Button text resolves against the suspending app's resources, which is Hail in owner mode. */
+    val moreDetailsWithText: Any? by lazy { build(BUTTON_ACTION_MORE_DETAILS, withText = true) }
+
+    /**
+     * Same action without the text: the framework only shows the neutral button when it resolves
+     * `ACTION_SHOW_SUSPENDED_APP_DETAILS` inside the suspending package. With Shizuku that package
+     * is `com.android.shell`, which has no such activity, so the button disappears and the app
+     * cannot be unsuspended from the dialog at all. The system dialog still works otherwise.
+     */
+    val moreDetailsWithoutText: Any? by lazy { build(BUTTON_ACTION_MORE_DETAILS, withText = false) }
+
+    /** For suspenders whose package hosts [com.aistra.hail.ui.api.SuspendedDialogActivity]. */
+    val current: Any? get() = if (HailData.biometricUnfreeze) moreDetailsWithText else unsuspend
+
+    /** For suspenders that cannot host our activity: hide the neutral button instead. */
+    val currentBlocking: Any? get() = if (HailData.biometricUnfreeze) moreDetailsWithoutText else unsuspend
 
     private fun build(action: Int, withText: Boolean): Any? = runCatching {
         HiddenApiBypass.newInstance(Class.forName("android.content.pm.SuspendDialogInfo\$Builder")).let {

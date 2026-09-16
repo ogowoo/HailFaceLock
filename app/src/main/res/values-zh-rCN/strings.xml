@@ -109,6 +109,7 @@
     <string name="unfreeze_debug">恢复验证诊断</string>
     <string name="unfreeze_debug_empty">暂无记录。</string>
     <string name="action_verify_unfreeze">验证后恢复</string>
+    <string name="unfreeze_dialog_note">系统弹窗已不再提供“取消暂停应用”，请回到雹中验证后恢复</string>
     <string name="action_pin">置顶</string>
     <string name="action_unpin">取消置顶</string>
     <string name="action_whitelist">添加到白名单</string>

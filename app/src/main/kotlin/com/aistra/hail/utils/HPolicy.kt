@@ -7,8 +7,6 @@ import android.content.Intent
 import androidx.core.content.getSystemService
 import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.receiver.DeviceAdminReceiver
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 object HPolicy {
@@ -68,15 +66,6 @@ object HPolicy {
             pm::class.java, pm, "setPackagesSuspendedAsUser",
             arrayOf(packageName), suspended, null, null, dialogInfo, app.packageName, HPackages.myUserId
         )
-
-    /**
-     * Re-applies the suspension of already suspended apps so they pick up the current
-     * SuspendDialogInfo (the dialog info is stored per suspension).
-     */
-    suspend fun refreshSuspendDialogs(packageNames: List<String>) = withContext(Dispatchers.IO) {
-        if (!isDeviceOwnerActive) return@withContext
-        packageNames.forEach { runCatching { setAppSuspended(it, true) } }
-    }
 
     fun uninstallApp(packageName: String): Boolean = when {
         isDeviceOwnerActive -> {

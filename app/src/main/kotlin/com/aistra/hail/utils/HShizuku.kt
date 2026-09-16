@@ -103,10 +103,10 @@ object HShizuku {
         }
     }
 
-    fun setAppSuspended(packageName: String, suspended: Boolean): Boolean {
+    fun setAppSuspended(packageName: String, suspended: Boolean, forceStop: Boolean = true): Boolean {
         HPackages.getApplicationInfoOrNull(packageName) ?: return false
         if (HTarget.P) setAppRestricted(packageName, suspended)
-        if (suspended) forceStopApp(packageName)
+        if (suspended && forceStop) forceStopApp(packageName)
         return runCatching {
             val pm = asInterface("android.content.pm.IPackageManager", "package")
             (when {
@@ -181,13 +181,11 @@ object HShizuku {
             HPackages.myUserId
         )
 
-    private val suspendDialogInfo: Any
-        @RequiresApi(Build.VERSION_CODES.Q) @SuppressLint("PrivateApi") get() = HiddenApiBypass.newInstance(
-            Class.forName("android.content.pm.SuspendDialogInfo\$Builder")
-        ).let {
-            HiddenApiBypass.invoke(it::class.java, it, "setNeutralButtonAction", 1 /*BUTTON_ACTION_UNSUSPEND*/)
-            HiddenApiBypass.invoke(it::class.java, it, "build")
-        }
+    /**
+     * With the biometric gate on the neutral button of the system dialog is hidden (no activity
+     * inside the suspending package can handle it), so the dialog cannot unsuspend on its own.
+     */
+    private val suspendDialogInfo: Any? get() = HSuspendDialog.currentBlocking
 
     @RequiresApi(Build.VERSION_CODES.P)
     fun setAppRestricted(packageName: String, restricted: Boolean): Boolean = runCatching {

@@ -74,6 +74,20 @@ object AppManager {
             }
         }
 
+    /**
+     * Re-applies an existing suspension so it carries the current SuspendDialogInfo.
+     * The dialog info is stored together with each suspension, so toggling the biometric gate
+     * only affects apps that are suspended again afterwards.
+     */
+    fun refreshSuspendInfo(packageName: String): Boolean = when (HailData.workingMode) {
+        HailData.MODE_SHIZUKU_SUSPEND -> HShizuku.setAppSuspended(packageName, true, forceStop = false)
+        HailData.MODE_SU_SUSPEND -> HShell.setAppSuspended(packageName, true)
+        HailData.MODE_OWNER_SUSPEND -> HPolicy.setAppSuspended(packageName, true)
+        HailData.MODE_DHIZUKU_SUSPEND -> HDhizuku.setAppSuspended(packageName, true)
+        HailData.MODE_ISLAND_SUSPEND -> HIsland.setAppSuspended(packageName, true)
+        else -> false
+    }
+
     fun uninstallApp(packageName: String): Boolean {
         when {
             HailData.workingMode.startsWith(HailData.OWNER) ->
