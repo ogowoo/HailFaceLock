@@ -90,6 +90,19 @@
                 android:exported="false"
                 android:theme="@style/Theme.Hail.Translucent"/>
 
+        <activity
+                android:name=".ui.api.SuspendedDialogActivity"
+                android:excludeFromRecents="true"
+                android:exported="true"
+                android:permission="android.permission.SEND_SHOW_SUSPENDED_APP_DETAILS"
+                android:theme="@style/Theme.Hail.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_SUSPENDED_APP_DETAILS"/>
+
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+
         <provider
                 android:name="rikka.shizuku.ShizukuProvider"
                 android:authorities="${applicationId}.shizuku"

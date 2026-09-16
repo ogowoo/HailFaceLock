@@ -1,5 +1,6 @@
 package com.aistra.hail.ui.api
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
@@ -15,18 +16,29 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Shown after the user unsuspends an app from the system dialog.
- * The app has been re-frozen by [com.aistra.hail.receiver.UnsuspendedReceiver];
- * it is only unfreezed (and optionally launched) after biometric authentication succeeds.
+ * Shown after an app was unsuspended outside Hail (system dialog, shortcut, notification).
+ * The app has been re-frozen by [com.aistra.hail.receiver.UnsuspendedReceiver] or was never
+ * unfrozen at all; it is only unfreezed (and optionally launched) after biometric
+ * authentication succeeds.
+ *
+ * [SuspendedDialogActivity] subclasses this for the system dialog entry point.
  */
-class UnfreezeAuthActivity : AppCompatActivity() {
+open class UnfreezeAuthActivity : AppCompatActivity() {
+    /** Package to verify, taken from whichever extra the caller used. */
+    protected open fun resolvePackage(intent: Intent): String? =
+        intent.getStringExtra(HailData.KEY_PACKAGE)
+
+    /** Whether the app should be started once it is unfrozen. */
+    protected open val launchAfterAuth: Boolean
+        get() = intent.getBooleanExtra(EXTRA_LAUNCH, false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
             finish()
             return
         }
-        val pkg = intent.getStringExtra(HailData.KEY_PACKAGE)
+        val pkg = resolvePackage(intent)
         if (pkg.isNullOrEmpty() || !HailData.biometricUnfreeze) {
             finish()
             return
@@ -48,7 +60,7 @@ class UnfreezeAuthActivity : AppCompatActivity() {
                             HLogFile.append("auth activity: unfroze $pkg")
                             runCatching { NotificationManagerCompat.from(app).cancel(NOTIFICATION_ID) }
                             app.setAutoFreezeService()
-                            if (intent.getBooleanExtra(EXTRA_LAUNCH, false)) {
+                            if (launchAfterAuth) {
                                 // Wait until the frozen state has actually lifted before launching.
                                 var retries = 20
                                 while (AppManager.isAppFrozen(pkg) && retries-- > 0) delay(100)

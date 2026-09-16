@@ -115,6 +115,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                         ) requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         // The guard service observes manual unsuspends from the system dialog.
                         app.setUnfreezeGuardService(value)
+                        refreshSuspendDialogs()
                         true
                     }
                 },
@@ -372,6 +373,19 @@ class SettingsFragment : MainFragment(), MenuProvider {
 
     private fun String.toEntry(values: List<String>, @ArrayRes entriesId: Int): String =
         resources.getStringArray(entriesId)[values.indexOf(this)]
+
+    /**
+     * The system dialog information is stored together with each suspension, so apps that were
+     * suspended before the setting changed have to be suspended again to pick it up.
+     */
+    private fun refreshSuspendDialogs() {
+        if (!HPolicy.isDeviceOwnerActive) return
+        val frozen = HailData.checkedList
+            .filter { it.applicationInfo != null && AppManager.isAppFrozen(it.packageName) }
+            .map { it.packageName }
+        if (frozen.isEmpty()) return
+        lifecycleScope.launch { HPolicy.refreshSuspendDialogs(frozen) }
+    }
 
     private fun showUnfreezeDebug() {
         val log = HLogFile.read().ifBlank { getString(R.string.unfreeze_debug_empty) }
