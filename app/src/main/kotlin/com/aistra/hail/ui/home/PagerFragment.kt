@@ -432,9 +432,13 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
                 HUI.showToast(R.string.biometric_unavailable)
                 return
             }
-            HBiometric.authenticate(requireActivity(), onSuccess = { launchApp(packageName) })
+            HBiometric.authenticate(requireActivity(), onSuccess = { unfreezeAndLaunch(packageName) })
             return
         }
+        unfreezeAndLaunch(packageName)
+    }
+
+    private fun unfreezeAndLaunch(packageName: String) {
         if (AppManager.isAppFrozen(packageName) && AppManager.setAppFrozen(packageName, false)) {
             updateCurrentList()
         }
