@@ -100,6 +100,9 @@
     <string name="action_biometric_unfreeze">恢复应用前需生物识别</string>
     <string name="msg_biometric_unfreeze">通过人脸或指纹验证后才能恢复被暂停的应用</string>
     <string name="biometric_unavailable">此设备未录入可用的生物识别凭证</string>
+    <string name="unfreeze_auth_channel">恢复验证</string>
+    <string name="unfreeze_auth_title">需要验证身份</string>
+    <string name="unfreeze_auth_text">%s 已重新暂停，点击进行人脸或指纹验证后恢复</string>
     <string name="action_pin">置顶</string>
     <string name="action_unpin">取消置顶</string>
     <string name="action_whitelist">添加到白名单</string>

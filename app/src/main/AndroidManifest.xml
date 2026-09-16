@@ -84,6 +84,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+                android:name=".ui.api.UnfreezeAuthActivity"
+                android:excludeFromRecents="true"
+                android:exported="false"
+                android:theme="@style/Theme.Hail.Translucent"/>
+
         <provider
                 android:name="rikka.shizuku.ShizukuProvider"
                 android:authorities="${applicationId}.shizuku"

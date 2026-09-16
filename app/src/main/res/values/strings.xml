@@ -113,6 +113,9 @@
     <string name="action_biometric_unfreeze">Biometric verification to unfreeze</string>
     <string name="msg_biometric_unfreeze">Verify with your face or fingerprint before unfreezing apps</string>
     <string name="biometric_unavailable">No biometric credential is enrolled on this device</string>
+    <string name="unfreeze_auth_channel">Unfreeze verification</string>
+    <string name="unfreeze_auth_title">Biometric verification required</string>
+    <string name="unfreeze_auth_text">%s was paused again. Tap to verify and unfreeze it.</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>
     <string name="action_whitelist">Add to Whitelist</string>
