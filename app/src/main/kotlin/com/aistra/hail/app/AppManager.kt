@@ -51,7 +51,9 @@ object AppManager {
     }
 
     fun setAppFrozen(packageName: String, frozen: Boolean): Boolean =
-        packageName != BuildConfig.APPLICATION_ID && when (HailData.workingMode) {
+        packageName != BuildConfig.APPLICATION_ID && run {
+            if (!frozen) UnfreezeGate.expect(packageName)
+            when (HailData.workingMode) {
             HailData.MODE_OWNER_HIDE -> HPolicy.setAppHidden(packageName, frozen)
             HailData.MODE_OWNER_SUSPEND -> HPolicy.setAppSuspended(packageName, frozen)
             HailData.MODE_DHIZUKU_HIDE -> HDhizuku.setAppHidden(packageName, frozen)
@@ -69,6 +71,7 @@ object AppManager {
             HailData.MODE_PRIVAPP_STOP -> !frozen || HPackages.forceStopApp(packageName)
             HailData.MODE_PRIVAPP_DISABLE -> HPackages.setAppDisabled(packageName, frozen)
             else -> false
+            }
         }
 
     fun uninstallApp(packageName: String): Boolean {

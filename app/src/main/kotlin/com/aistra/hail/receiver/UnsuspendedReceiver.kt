@@ -16,13 +16,16 @@ import com.aistra.hail.utils.HPackages
 import com.aistra.hail.utils.HShizuku.setAppRestricted
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
+import com.aistra.hail.utils.UnfreezeGate
 
 class UnsuspendedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_PACKAGE_UNSUSPENDED_MANUALLY) return
         runCatching {
             val pkg = intent.getStringExtra(Intent.EXTRA_PACKAGE_NAME)!!
-            if (HailData.biometricUnfreeze && AppManager.setAppFrozen(pkg, true)) {
+            // Unfreezes initiated by Hail itself (also fire this broadcast on some ROMs) pass through.
+            val intentional = UnfreezeGate.consume(pkg)
+            if (HailData.biometricUnfreeze && !intentional && AppManager.setAppFrozen(pkg, true)) {
                 // The user unsuspended the app from the system dialog.
                 // Re-freeze it immediately and require biometric authentication to truly unfreeze.
                 // Note: freezing again also restores the restricted standby bucket (API 31+).
