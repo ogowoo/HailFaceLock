@@ -105,7 +105,11 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     if (value && !HBiometric.isAvailable) {
                         HUI.showToast(R.string.biometric_unavailable)
                         false
-                    } else true
+                    } else {
+                        // The guard service observes manual unsuspends from the system dialog.
+                        app.setUnfreezeGuardService(value)
+                        true
+                    }
                 },
                 titleId = R.string.action_biometric_unfreeze,
                 icon = Icons.Outlined.Face

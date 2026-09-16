@@ -18,6 +18,7 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.aistra.hail.R
+import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.app.HailData
 import com.aistra.hail.databinding.ActivityMainBinding
 import com.aistra.hail.extensions.*
@@ -58,6 +59,12 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
             .setSubtitle(getString(R.string.msg_biometric)).setNegativeButtonText(getString(android.R.string.cancel))
             .build()
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Keep the manual-unsuspend guard in sync with the setting (foreground context).
+        app.setUnfreezeGuardService()
     }
 
     private fun initView() = ActivityMainBinding.inflate(layoutInflater).apply {

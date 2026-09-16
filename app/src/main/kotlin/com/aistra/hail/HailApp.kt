@@ -12,7 +12,9 @@ import androidx.core.content.getSystemService
 import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailData
 import com.aistra.hail.services.AutoFreezeService
+import com.aistra.hail.services.UnfreezeGuardService
 import com.aistra.hail.utils.HDhizuku
+import com.aistra.hail.utils.HLog
 import com.aistra.hail.utils.HTarget
 
 class HailApp : Application() {
@@ -44,6 +46,18 @@ class HailApp : Application() {
             if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
+    }
+
+    /**
+     * Starts or stops the guard service that watches for manual unsuspends.
+     * Must be called from a foreground context (service start restrictions).
+     */
+    fun setUnfreezeGuardService(enabled: Boolean = HailData.biometricUnfreeze, context: Context = app) {
+        val intent = Intent(app, UnfreezeGuardService::class.java)
+        runCatching {
+            if (enabled) ContextCompat.startForegroundService(context, intent)
+            else stopService(intent)
+        }.onFailure { HLog.e(it) }
     }
 
     fun setAppTheme(theme: String) {

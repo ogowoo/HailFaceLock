@@ -103,6 +103,9 @@
     <string name="unfreeze_auth_channel">恢复验证</string>
     <string name="unfreeze_auth_title">需要验证身份</string>
     <string name="unfreeze_auth_text">%s 已重新暂停，点击进行人脸或指纹验证后恢复</string>
+    <string name="unfreeze_guard_channel">恢复守护</string>
+    <string name="unfreeze_guard_title">恢复验证已开启</string>
+    <string name="unfreeze_guard_text">解除暂停应用需要人脸或指纹验证</string>
     <string name="action_pin">置顶</string>
     <string name="action_unpin">取消置顶</string>
     <string name="action_whitelist">添加到白名单</string>
