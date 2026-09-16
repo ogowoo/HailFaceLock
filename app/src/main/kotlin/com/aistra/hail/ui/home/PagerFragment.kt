@@ -412,21 +412,31 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
     /**
      * Gate an unfreeze action behind biometric (face / fingerprint) authentication.
-     * When the setting is off or biometrics are unavailable, runs [action] directly.
+     * Blocks with a toast when the setting is on but biometrics are unavailable.
      */
     private fun requireUnfreezeAuth(action: () -> Unit) {
-        if (!HailData.biometricUnfreeze || !HBiometric.isAvailable) {
+        if (!HailData.biometricUnfreeze) {
             action()
-        } else HBiometric.authenticate(requireActivity(), onSuccess = action)
+            return
+        }
+        if (!HBiometric.isAvailable) {
+            HUI.showToast(R.string.biometric_unavailable)
+            return
+        }
+        HBiometric.authenticate(requireActivity(), onSuccess = action)
     }
 
     private fun launchApp(packageName: String) {
-        if (AppManager.isAppFrozen(packageName)) {
-            if (HailData.biometricUnfreeze && HBiometric.isAvailable) {
-                HBiometric.authenticate(requireActivity()) { launchApp(packageName) }
+        if (AppManager.isAppFrozen(packageName) && HailData.biometricUnfreeze) {
+            if (!HBiometric.isAvailable) {
+                HUI.showToast(R.string.biometric_unavailable)
                 return
             }
-            if (AppManager.setAppFrozen(packageName, false)) updateCurrentList()
+            HBiometric.authenticate(requireActivity(), onSuccess = { launchApp(packageName) })
+            return
+        }
+        if (AppManager.isAppFrozen(packageName) && AppManager.setAppFrozen(packageName, false)) {
+            updateCurrentList()
         }
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {
             HIsland.ensureLaunchIntentExists(packageName)

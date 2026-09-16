@@ -5,9 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager.NameNotFoundException
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,12 +34,37 @@ import com.aistra.hail.ui.theme.AppTheme
 import com.aistra.hail.utils.*
 import com.aistra.hail.work.HWork.setAutoFreeze
 
-class ApiActivity : ComponentActivity() {
+class ApiActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         runCatching {
             if (handleAction(intent.action)) finish()
         }.onFailure(::setErrorDialog)
+    }
+
+    /**
+     * Gate an unfreeze action behind biometric (face / fingerprint) authentication.
+     * Returns true when the caller may finish immediately (action ran or was blocked),
+     * false while the authentication prompt is showing (activity must stay alive).
+     */
+    private fun requireUnfreezeAuth(action: () -> Unit): Boolean {
+        if (!HailData.biometricUnfreeze) {
+            action()
+            return true
+        }
+        if (!HBiometric.isAvailable) {
+            HUI.showToast(R.string.biometric_unavailable)
+            return true
+        }
+        HBiometric.authenticate(
+            this,
+            onSuccess = {
+                action()
+                finish()
+            },
+            onDismiss = ::finish
+        )
+        return false
     }
 
     private fun handleAction(action: String?): Boolean {
@@ -51,18 +76,28 @@ class ApiActivity : ComponentActivity() {
 
             Intent.ACTION_VIEW -> return handleSchema(intent.data)
 
-            HailApi.ACTION_LAUNCH -> launchApp(requirePackage, runCatching { requireTagId }.getOrNull())
+            HailApi.ACTION_LAUNCH -> {
+                val pkg = requirePackage
+                val tagId = runCatching { requireTagId }.getOrNull()
+                val needsUnfreeze = AppManager.isAppFrozen(pkg) || (tagId != null && HailData.checkedList.any {
+                    tagId in it.tagIdList && AppManager.isAppFrozen(it.packageName)
+                })
+                if (needsUnfreeze) return requireUnfreezeAuth { launchApp(pkg, tagId) }
+                launchApp(pkg, tagId)
+            }
+
             HailApi.ACTION_FREEZE -> setAppFrozen(requirePackage, true)
-            HailApi.ACTION_UNFREEZE -> setAppFrozen(requirePackage, false)
+            HailApi.ACTION_UNFREEZE -> return requireUnfreezeAuth { setAppFrozen(requirePackage, false) }
             HailApi.ACTION_FREEZE_TAG -> setListFrozen(
                 true, HailData.checkedList.filter { requireTagId in it.tagIdList }, true
             )
 
-            HailApi.ACTION_UNFREEZE_TAG -> setListFrozen(
-                false, HailData.checkedList.filter { requireTagId in it.tagIdList })
+            HailApi.ACTION_UNFREEZE_TAG -> return requireUnfreezeAuth {
+                setListFrozen(false, HailData.checkedList.filter { requireTagId in it.tagIdList })
+            }
 
             HailApi.ACTION_FREEZE_ALL -> setListFrozen(true)
-            HailApi.ACTION_UNFREEZE_ALL -> setListFrozen(false)
+            HailApi.ACTION_UNFREEZE_ALL -> return requireUnfreezeAuth { setListFrozen(false) }
             HailApi.ACTION_FREEZE_NON_WHITELISTED -> setListFrozen(true, skipWhitelisted = true)
             HailApi.ACTION_FREEZE_AUTO -> setAutoFreeze(false)
             HailApi.ACTION_LOCK -> lockScreen(false)
@@ -124,8 +159,16 @@ class ApiActivity : ComponentActivity() {
                 style = MaterialTheme.typography.headlineSmall
             )
             ClickableItem(
-                icon = Icons.AutoMirrored.Outlined.Launch, title = R.string.action_launch
-            ) { launchApp(pkg) }
+                icon = Icons.AutoMirrored.Outlined.Launch, title = R.string.action_launch,
+                finishAfterClick = false
+            ) {
+                if (AppManager.isAppFrozen(pkg)) {
+                    if (requireUnfreezeAuth { launchApp(pkg) }) finish()
+                } else {
+                    launchApp(pkg)
+                    finish()
+                }
+            }
             ClickableItem(
                 icon = Icons.Rounded.AcUnit, title = R.string.action_freeze
             ) {
@@ -133,17 +176,22 @@ class ApiActivity : ComponentActivity() {
                 setAppFrozen(pkg, true)
             }
             ClickableItem(
-                icon = Icons.Rounded.BrightnessLow, title = R.string.action_unfreeze
-            ) { setAppFrozen(pkg, false) }
+                icon = Icons.Rounded.BrightnessLow, title = R.string.action_unfreeze,
+                finishAfterClick = false
+            ) {
+                if (requireUnfreezeAuth { setAppFrozen(pkg, false) }) finish()
+            }
         }
     }
 
     @Composable
-    private fun ClickableItem(icon: ImageVector, @StringRes title: Int, onClick: () -> Unit) = Row(
+    private fun ClickableItem(
+        icon: ImageVector, @StringRes title: Int, finishAfterClick: Boolean = true, onClick: () -> Unit
+    ) = Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = {
             runCatching {
                 onClick()
-                finish()
+                if (finishAfterClick) finish()
             }.onFailure(::setErrorDialog)
         }), verticalAlignment = Alignment.CenterVertically
     ) {

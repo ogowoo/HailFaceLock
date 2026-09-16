@@ -17,12 +17,14 @@ object HBiometric {
     /**
      * Shows a biometric prompt (face / fingerprint / device credential).
      * [onSuccess] is only invoked after the user passes the authentication.
+     * [onDismiss] is invoked when the prompt is canceled or fails.
      */
     fun authenticate(
         activity: FragmentActivity,
         title: String = activity.getString(R.string.action_biometric_unfreeze),
         subtitle: String = activity.getString(R.string.msg_biometric_unfreeze),
-        onSuccess: () -> Unit
+        onSuccess: () -> Unit,
+        onDismiss: (() -> Unit)? = null
     ) {
         val prompt = BiometricPrompt(
             activity,
@@ -34,6 +36,7 @@ object HBiometric {
                         errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON &&
                         errorCode != BiometricPrompt.ERROR_CANCELED
                     ) HUI.showToast(errString)
+                    onDismiss?.invoke()
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
