@@ -52,20 +52,27 @@ class ApiActivity : AppCompatActivity() {
      */
     private fun requireUnfreezeAuth(action: () -> Unit): Boolean {
         if (!HailData.biometricUnfreeze) {
+            HLogFile.append("api: gate off, running action")
             action()
             return true
         }
         if (!HBiometric.isAvailable) {
             HUI.showToast(R.string.biometric_unavailable)
+            HLogFile.append("api: biometrics unavailable")
             return true
         }
+        HLogFile.append("api: asking for verification")
         HBiometric.authenticate(
             this,
             onSuccess = {
+                HLogFile.append("api: verification passed")
                 action()
                 finish()
             },
-            onDismiss = ::finish
+            onDismiss = {
+                HLogFile.append("api: verification dismissed")
+                finish()
+            }
         )
         return false
     }
