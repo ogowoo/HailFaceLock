@@ -191,7 +191,8 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
         ) { _, which ->
             when (which) {
                 0 -> launchApp(pkg)
-                1 -> setListFrozen(!frozen, listOf(info))
+                1 -> if (frozen) requireUnfreezeAuth { setListFrozen(false, listOf(info)) }
+                else setListFrozen(true, listOf(info))
                 2 -> {
                     val values = resources.getIntArray(R.array.deferred_task_values)
                     val entries = arrayOfNulls<String>(values.size)
@@ -243,7 +244,7 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
                 7 -> exportToClipboard(listOf(info))
                 8 -> removeCheckedApp(pkg)
-                9 -> {
+                9 -> requireUnfreezeAuth {
                     setListFrozen(false, listOf(info), false)
                     if (!AppManager.isAppFrozen(pkg)) removeCheckedApp(pkg)
                 }
@@ -307,7 +308,7 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
                     deselect()
                 }
 
-                1 -> {
+                1 -> requireUnfreezeAuth {
                     setListFrozen(false, selectedList, false)
                     deselect()
                 }
@@ -325,7 +326,7 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
                     deselect()
                 }
 
-                5 -> {
+                5 -> requireUnfreezeAuth {
                     setListFrozen(false, selectedList, false)
                     selectedList.forEach {
                         if (!AppManager.isAppFrozen(it.packageName)) removeCheckedApp(it.packageName, false)
@@ -409,9 +410,23 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
         }
     }
 
+    /**
+     * Gate an unfreeze action behind biometric (face / fingerprint) authentication.
+     * When the setting is off or biometrics are unavailable, runs [action] directly.
+     */
+    private fun requireUnfreezeAuth(action: () -> Unit) {
+        if (!HailData.biometricUnfreeze || !HBiometric.isAvailable) {
+            action()
+        } else HBiometric.authenticate(requireActivity(), onSuccess = action)
+    }
+
     private fun launchApp(packageName: String) {
-        if (AppManager.isAppFrozen(packageName) && AppManager.setAppFrozen(packageName, false)) {
-            updateCurrentList()
+        if (AppManager.isAppFrozen(packageName)) {
+            if (HailData.biometricUnfreeze && HBiometric.isAvailable) {
+                HBiometric.authenticate(requireActivity()) { launchApp(packageName) }
+                return
+            }
+            if (AppManager.setAppFrozen(packageName, false)) updateCurrentList()
         }
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {
             HIsland.ensureLaunchIntentExists(packageName)
@@ -566,9 +581,9 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
             R.id.action_freeze_current -> setListFrozen(true, pagerAdapter.currentList.filterNot { it.whitelisted })
 
-            R.id.action_unfreeze_current -> setListFrozen(false, pagerAdapter.currentList)
+            R.id.action_unfreeze_current -> requireUnfreezeAuth { setListFrozen(false, pagerAdapter.currentList) }
             R.id.action_freeze_all -> setListFrozen(true)
-            R.id.action_unfreeze_all -> setListFrozen(false)
+            R.id.action_unfreeze_all -> requireUnfreezeAuth { setListFrozen(false) }
             R.id.action_freeze_non_whitelisted -> setListFrozen(true, HailData.checkedList.filterNot { it.whitelisted })
 
             R.id.action_import_clipboard -> importFromClipboard()

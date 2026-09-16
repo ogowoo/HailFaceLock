@@ -96,6 +96,9 @@
     <string name="compact_icon">精簡圖示</string>
     <string name="action_biometric">生物特徵辨識登入</string>
     <string name="msg_biometric">使用您的生物特徵辨識認證登入</string>
+    <string name="action_biometric_unfreeze">解凍應用前需生物特徵辨識</string>
+    <string name="msg_biometric_unfreeze">透過人臉或指紋驗證後才能解除凍結的應用</string>
+    <string name="biometric_unavailable">此裝置未錄入可用的生物特徵辨識認證</string>
     <string name="action_pin">釘選</string>
     <string name="action_unpin">取消釘選</string>
     <string name="action_whitelist">新增至白名單</string>

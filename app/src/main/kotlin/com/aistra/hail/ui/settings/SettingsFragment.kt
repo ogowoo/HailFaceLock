@@ -98,6 +98,18 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 titleId = R.string.action_biometric,
                 icon = Icons.Outlined.Fingerprint
             )
+            switchPreference(
+                key = HailData.BIOMETRIC_UNFREEZE,
+                defaultValue = false,
+                onValueChange = { _, value ->
+                    if (value && !HBiometric.isAvailable) {
+                        HUI.showToast(R.string.biometric_unavailable)
+                        false
+                    } else true
+                },
+                titleId = R.string.action_biometric_unfreeze,
+                icon = Icons.Outlined.Face
+            )
             horizontalDivider()
             preferenceCategory(key = "customize", title = { Text(text = stringResource(R.string.title_customize)) })
             listPreference(

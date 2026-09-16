@@ -87,6 +87,7 @@ object HailData {
         MODE_PRIVAPP_DISABLE
     )
     const val BIOMETRIC_LOGIN = "biometric_login"
+    const val BIOMETRIC_UNFREEZE = "biometric_unfreeze"
     const val APP_THEME = "app_theme"
     const val FOLLOW_SYSTEM = "follow_system"
     const val THEME_LIGHT = "theme_light"
@@ -138,6 +139,7 @@ object HailData {
     val filterUnfrozenApps get() = sp.getBoolean(FILTER_UNFROZEN_APPS, true)
     val workingMode get() = sp.getString(WORKING_MODE, MODE_DEFAULT)!!
     val biometricLogin get() = sp.getBoolean(BIOMETRIC_LOGIN, false)
+    val biometricUnfreeze get() = sp.getBoolean(BIOMETRIC_UNFREEZE, false)
     val appTheme get() = sp.getString(APP_THEME, FOLLOW_SYSTEM)!!
     val iconPack get() = sp.getString(ICON_PACK, ACTION_NONE)!!
     val grayscaleIcon get() = sp.getBoolean(GRAYSCALE_ICON, true)
