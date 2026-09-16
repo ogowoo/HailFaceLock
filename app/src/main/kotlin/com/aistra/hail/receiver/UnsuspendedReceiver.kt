@@ -1,5 +1,6 @@
 package com.aistra.hail.receiver
 
+import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -134,7 +135,33 @@ class UnsuspendedReceiver : BroadcastReceiver() {
                     NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
                     HLogFile.append("verification notification posted for $packageName")
                 }.onFailure { HLogFile.append("notification FAILED for $packageName: $it") }
+                launchVerification(packageName)
             }
+        }
+
+        /**
+         * Tries to show the verification prompt immediately instead of waiting for a tap on the
+         * notification. Background activity starts are restricted, so this opts in explicitly;
+         * if the system still refuses, the notification stays as the fallback.
+         */
+        private fun launchVerification(packageName: String) {
+            val intent = Intent(app, UnfreezeAuthActivity::class.java)
+                .putExtra(HailData.KEY_PACKAGE, packageName)
+                .putExtra(UnfreezeAuthActivity.EXTRA_LAUNCH, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching {
+                val pendingIntent = PendingIntent.getActivity(
+                    app, packageName.hashCode(), intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                if (HTarget.U) {
+                    val options = ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(
+                            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        ).toBundle()
+                    pendingIntent.send(app, 0, null, null, null, null, options)
+                } else pendingIntent.send()
+            }.onFailure { HLogFile.append("direct verification launch failed: $it") }
         }
     }
 }

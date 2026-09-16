@@ -187,7 +187,7 @@ class UnfreezeGuardService : Service() {
     companion object {
         private const val CHANNEL_ID = "unfreeze_guard"
         private const val NOTIFICATION_ID = 201
-        private const val POLL_INTERVAL_MS = 1_000L
+        private const val POLL_INTERVAL_MS = 500L
         private const val HEARTBEAT_TICKS = 300
     }
 }
