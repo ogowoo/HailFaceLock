@@ -1,12 +1,22 @@
 package com.aistra.hail.app
 
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import com.aistra.hail.BuildConfig
+import com.aistra.hail.HailApp.Companion.app
+import com.aistra.hail.R
 import com.aistra.hail.utils.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object AppManager {
+    private val suspendSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
     val lockScreen: Boolean
         get() = when {
             HailData.workingMode.startsWith(HailData.OWNER) -> HPolicy.lockScreen
@@ -86,6 +96,29 @@ object AppManager {
         HailData.MODE_DHIZUKU_SUSPEND -> HDhizuku.setAppSuspended(packageName, true)
         HailData.MODE_ISLAND_SUSPEND -> HIsland.setAppSuspended(packageName, true)
         else -> false
+    }
+
+    /**
+     * Re-applies the suspension of every frozen app when the dialog information may have changed
+     * (biometric gate toggled, working mode changed, or first launch after an update). The dialog
+     * info is stored together with each suspension, so apps suspended under the old setting keep
+     * the old dialog until they are suspended again.
+     */
+    fun syncSuspendDialogs() {
+        if (!HailData.workingMode.endsWith(HailData.SUSPEND)) return
+        val state = "${HailData.biometricUnfreeze}:${HailData.workingMode}"
+        if (HailData.suspendDialogState == state) return
+        suspendSyncScope.launch {
+            val frozen = HailData.checkedList
+                .filter { it.applicationInfo != null && isAppFrozen(it.packageName) }
+                .map { it.packageName }
+            frozen.forEach { runCatching { refreshSuspendInfo(it) } }
+            HailData.setSuspendDialogState(state)
+            HLogFile.append("suspend dialog refreshed for ${frozen.size} app(s), state=$state")
+            mainHandler.post {
+                HUI.showToast(app.getString(R.string.suspend_dialog_refreshed, frozen.size), true)
+            }
+        }
     }
 
     fun uninstallApp(packageName: String): Boolean {

@@ -109,6 +109,7 @@
     <string name="unfreeze_debug_empty">尚無記錄。</string>
     <string name="action_verify_unfreeze">驗證後解凍</string>
     <string name="unfreeze_dialog_note">系統彈窗已不再提供「取消暫停應用」，請回到雹中驗證後解凍</string>
+    <string name="suspend_dialog_refreshed">已更新 %1$d 個應用的暫停彈窗資訊</string>
     <string name="action_pin">釘選</string>
     <string name="action_unpin">取消釘選</string>
     <string name="action_whitelist">新增至白名單</string>

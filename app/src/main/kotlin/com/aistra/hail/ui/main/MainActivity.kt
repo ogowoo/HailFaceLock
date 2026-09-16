@@ -19,6 +19,7 @@ import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.aistra.hail.R
 import com.aistra.hail.HailApp.Companion.app
+import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailData
 import com.aistra.hail.databinding.ActivityMainBinding
 import com.aistra.hail.extensions.*
@@ -65,6 +66,8 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
         super.onResume()
         // Keep the manual-unsuspend guard in sync with the setting (foreground context).
         app.setUnfreezeGuardService()
+        // Re-apply the suspend dialog info when it is out of date, e.g. after an update.
+        AppManager.syncSuspendDialogs()
     }
 
     private fun initView() = ActivityMainBinding.inflate(layoutInflater).apply {

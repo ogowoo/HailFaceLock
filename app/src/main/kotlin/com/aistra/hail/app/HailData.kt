@@ -88,6 +88,7 @@ object HailData {
     )
     const val BIOMETRIC_LOGIN = "biometric_login"
     const val BIOMETRIC_UNFREEZE = "biometric_unfreeze"
+    const val SUSPEND_DIALOG_STATE = "suspend_dialog_state"
     const val APP_THEME = "app_theme"
     const val FOLLOW_SYSTEM = "follow_system"
     const val THEME_LIGHT = "theme_light"
@@ -234,6 +235,10 @@ object HailData {
     }
 
     fun changeAppsSort(sort: String) = sp.edit { putString(SORT_BY, sort) }
+
+    /** Records which suspend dialog information was applied to the current suspensions. */
+    val suspendDialogState get() = sp.getString(SUSPEND_DIALOG_STATE, null)
+    fun setSuspendDialogState(state: String) = sp.edit { putString(SUSPEND_DIALOG_STATE, state) }
 
     fun changeAppsFilter(filter: String, enabled: Boolean) = sp.edit { putBoolean(filter, enabled) }
 }

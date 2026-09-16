@@ -123,6 +123,7 @@
     <string name="unfreeze_debug_empty">No events recorded yet.</string>
     <string name="action_verify_unfreeze">Verify to unfreeze</string>
     <string name="unfreeze_dialog_note">The system dialog can no longer unsuspend apps. Unfreeze them from Hail after verification.</string>
+    <string name="suspend_dialog_refreshed">Updated the suspend dialog of %1$d app(s)</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>
     <string name="action_whitelist">Add to Whitelist</string>
